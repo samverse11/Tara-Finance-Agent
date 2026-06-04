@@ -1,6 +1,6 @@
 # Tara Finance Agent
 
-AI finance agent for the Provue/Pazago take-home. Answers personal finance questions using PostgreSQL data and three Mastra tools — no LLM arithmetic.
+AI finance agent that answers personal finance questions using PostgreSQL data and three Mastra tools — no LLM arithmetic.
 
 ## Stack
 
