@@ -6,14 +6,18 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "start": "tsx src/index.ts",
+    "start:dev": "tsx src/index.ts",
     "build": "tsc",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push --force",
-    "ingest": "tsx src/ingest/index.ts",
-    "ingest:all": "tsx src/ingest/index.ts --all",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:indexes": "tsx scripts/run-indexes.ts",
+    "db:reset": "tsx scripts/reset-db.ts",
+    "ingest": "tsx scripts/ingest.ts",
+    "ingest:all": "tsx scripts/ingest.ts --all",
     "verify": "tsx scripts/verify-ingest.ts",
+    "test:queries": "tsx scripts/test-queries.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
@@ -34,7 +38,6 @@
     "@types/node": "^25.9.1",
     "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.10",
-    "ts-node": "^10.9.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }

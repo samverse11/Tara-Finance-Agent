@@ -1,5 +1,5 @@
 import { db } from '../db/connection';
-import { request_logs } from '../db/schema';
+import { requestLogs } from '../db/schema';
 import { taraAgent } from '../agent/tara';
 
 export interface AskResult {
@@ -54,13 +54,13 @@ export async function askQuestion(question: string): Promise<AskResult> {
 
   const latency_ms = Date.now() - started;
 
-  await db.insert(request_logs).values({
+  await db.insert(requestLogs).values({
     question,
-    tools_called,
+    toolsCalled: tools_called,
     status,
-    latency_ms,
+    totalLatencyMs: latency_ms,
     answer,
-    error: error ?? null,
+    errorMessage: error ?? null,
   });
 
   return { answer, tools_called, latency_ms, status, error };

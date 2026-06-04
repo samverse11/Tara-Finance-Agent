@@ -1,182 +1,201 @@
-import { and, desc, inArray, sql } from 'drizzle-orm';
-import { db } from '../db/connection';
-import { transactions } from '../db/schema';
-import {
-  buildTransactionWhere,
-  type TransactionFilter,
-} from './filters';
+import { pool } from '../db/client';
+import { activeDataset } from '../lib/dataset';
 
-export type TransactionOperation =
-  | 'total_spending'
-  | 'merchant_spending'
-  | 'category_spending'
-  | 'monthly_breakdown'
-  | 'top_merchants'
-  | 'biggest_expense'
-  | 'compare_merchants'
-  | 'list_transactions';
-
-export interface QueryTransactionsInput {
-  operation: TransactionOperation;
-  filter?: TransactionFilter;
+export interface TransactionQueryParams {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  categories?: string[] | null;
+  merchantSearch?: string | null;
+  excludeTransfers?: boolean;
+  sourceDataset?: string | null;
+  aggregate:
+    | 'sum'
+    | 'average'
+    | 'count'
+    | 'top_merchants'
+    | 'monthly_breakdown'
+    | 'list';
   limit?: number;
-  merchants?: string[];
 }
 
-function whereClause(filter: TransactionFilter = {}) {
-  return buildTransactionWhere(filter);
+export interface TransactionResultRow {
+  merchant?: string;
+  category?: string;
+  month?: string;
+  id?: string;
+  date?: string;
+  memo?: string | null;
+  total: number;
+  count: number;
 }
 
-export async function queryTransactions(input: QueryTransactionsInput) {
-  const filter = input.filter ?? {};
-  const where = whereClause(filter);
-  const limit = Math.min(input.limit ?? 10, 50);
+export interface TransactionResult {
+  found: boolean;
+  message?: string;
+  currency: string;
+  sourceDataset: string;
+  dateRange: { from: string | null; to: string | null };
+  data: TransactionResultRow[];
+}
 
-  switch (input.operation) {
-    case 'total_spending': {
-      const [row] = await db
-        .select({
-          total: sql<string>`COALESCE(SUM(${transactions.amount}::numeric), 0)`,
-          count: sql<number>`COUNT(*)::int`,
-        })
-        .from(transactions)
-        .where(where);
-      return {
-        operation: input.operation,
-        total_spending: row?.total ?? '0',
-        transaction_count: row?.count ?? 0,
-        note: 'Sum includes refunds (negative amounts reduce the total). Transfers excluded unless includeTransfers is true.',
-        filter,
-      };
-    }
+export async function queryTransactions(
+  p: TransactionQueryParams
+): Promise<TransactionResult> {
+  const sourceDataset = activeDataset(p.sourceDataset);
+  const excludeTransfers = p.excludeTransfers ?? true;
+  const limit = Math.min(p.limit ?? 10, 50);
 
-    case 'merchant_spending': {
-      const [row] = await db
-        .select({
-          total: sql<string>`COALESCE(SUM(${transactions.amount}::numeric), 0)`,
-          count: sql<number>`COUNT(*)::int`,
-        })
-        .from(transactions)
-        .where(where);
-      return {
-        operation: input.operation,
-        merchant: filter.merchantCanonical ?? filter.merchant ?? null,
-        total_spending: row?.total ?? '0',
-        transaction_count: row?.count ?? 0,
-        filter,
-      };
-    }
+  const conditions: string[] = ['source_dataset = $1'];
+  const values: unknown[] = [sourceDataset];
+  let idx = 2;
 
-    case 'category_spending': {
-      const rows = await db
-        .select({
-          category: transactions.category,
-          total: sql<string>`COALESCE(SUM(${transactions.amount}::numeric), 0)`,
-          count: sql<number>`COUNT(*)::int`,
-        })
-        .from(transactions)
-        .where(where)
-        .groupBy(transactions.category)
-        .orderBy(desc(sql`SUM(${transactions.amount}::numeric)`));
-      return { operation: input.operation, categories: rows, filter };
-    }
+  if (p.dateFrom) {
+    conditions.push(`date >= $${idx++}::date`);
+    values.push(p.dateFrom);
+  }
+  if (p.dateTo) {
+    conditions.push(`date < $${idx++}::date`);
+    values.push(p.dateTo);
+  }
+  if (p.categories && p.categories.length > 0) {
+    conditions.push(`category = ANY($${idx++}::text[])`);
+    values.push(p.categories.map((c) => c.toLowerCase()));
+  }
+  if (p.merchantSearch) {
+    const term = `%${p.merchantSearch.toUpperCase().replace(/[^A-Z0-9]/g, '')}%`;
+    conditions.push(`merchant_canonical ILIKE $${idx++}`);
+    values.push(term);
+  }
+  if (excludeTransfers) {
+    conditions.push('is_transfer = FALSE');
+  }
 
-    case 'monthly_breakdown': {
-      const rows = await db
-        .select({
-          month: sql<string>`TO_CHAR(${transactions.date}, 'YYYY-MM')`,
-          total: sql<string>`COALESCE(SUM(${transactions.amount}::numeric), 0)`,
-          count: sql<number>`COUNT(*)::int`,
-        })
-        .from(transactions)
-        .where(where)
-        .groupBy(sql`TO_CHAR(${transactions.date}, 'YYYY-MM')`)
-        .orderBy(sql`TO_CHAR(${transactions.date}, 'YYYY-MM')`);
-      return { operation: input.operation, months: rows, filter };
-    }
+  const where = conditions.join(' AND ');
+  let queryText: string;
 
-    case 'top_merchants': {
-      const rows = await db
-        .select({
-          merchant_canonical: transactions.merchant_canonical,
-          total: sql<string>`COALESCE(SUM(${transactions.amount}::numeric), 0)`,
-          count: sql<number>`COUNT(*)::int`,
-        })
-        .from(transactions)
-        .where(where)
-        .groupBy(transactions.merchant_canonical)
-        .orderBy(desc(sql`SUM(${transactions.amount}::numeric)`))
-        .limit(limit);
-      return { operation: input.operation, merchants: rows, filter };
-    }
+  switch (p.aggregate) {
+    case 'sum':
+      queryText = `
+        SELECT NULL::text AS merchant, NULL::text AS category, NULL::text AS month,
+               NULL::text AS id, NULL::date AS date, NULL::text AS memo,
+               COALESCE(SUM(amount::numeric), 0)::float AS total,
+               COUNT(*)::int AS count
+        FROM transactions WHERE ${where}`;
+      break;
 
-    case 'biggest_expense': {
-      const spendingOnly = and(
-        where ?? sql`TRUE`,
-        sql`${transactions.amount}::numeric > 0`
-      );
-      const [row] = await db
-        .select({
-          id: transactions.id,
-          date: transactions.date,
-          amount: transactions.amount,
-          merchant: transactions.merchant,
-          merchant_canonical: transactions.merchant_canonical,
-          category: transactions.category,
-          description: transactions.description,
-        })
-        .from(transactions)
-        .where(spendingOnly)
-        .orderBy(desc(sql`${transactions.amount}::numeric`))
-        .limit(1);
-      return {
-        operation: input.operation,
-        biggest_expense: row ?? null,
-        filter,
-      };
-    }
+    case 'average':
+      queryText = `
+        SELECT NULL::text AS merchant, NULL::text AS category, NULL::text AS month,
+               NULL::text AS id, NULL::date AS date, NULL::text AS memo,
+               COALESCE(AVG(amount::numeric), 0)::float AS total,
+               COUNT(*)::int AS count
+        FROM transactions WHERE ${where}`;
+      break;
 
-    case 'compare_merchants': {
-      const names = (input.merchants ?? []).map((m) => m.trim().toUpperCase());
-      if (names.length === 0) {
-        return {
-          operation: input.operation,
-          error: 'merchants array required for compare_merchants',
-        };
-      }
-      const rows = await db
-        .select({
-          merchant_canonical: transactions.merchant_canonical,
-          total: sql<string>`COALESCE(SUM(${transactions.amount}::numeric), 0)`,
-          count: sql<number>`COUNT(*)::int`,
-        })
-        .from(transactions)
-        .where(
-          and(where ?? sql`TRUE`, inArray(transactions.merchant_canonical, names))
-        )
-        .groupBy(transactions.merchant_canonical);
-      return { operation: input.operation, merchants: rows, filter };
-    }
+    case 'count':
+      queryText = `
+        SELECT NULL::text AS merchant, NULL::text AS category, NULL::text AS month,
+               NULL::text AS id, NULL::date AS date, NULL::text AS memo,
+               0::float AS total,
+               COUNT(*)::int AS count
+        FROM transactions WHERE ${where}`;
+      break;
 
-    case 'list_transactions': {
-      const rows = await db
-        .select({
-          id: transactions.id,
-          date: transactions.date,
-          amount: transactions.amount,
-          merchant: transactions.merchant,
-          merchant_canonical: transactions.merchant_canonical,
-          category: transactions.category,
-          description: transactions.description,
-        })
-        .from(transactions)
-        .where(where)
-        .orderBy(desc(transactions.date))
-        .limit(limit);
-      return { operation: input.operation, transactions: rows, filter };
-    }
+    case 'top_merchants':
+      queryText = `
+        SELECT merchant_canonical AS merchant, NULL::text AS category, NULL::text AS month,
+               NULL::text AS id, NULL::date AS date, NULL::text AS memo,
+               SUM(amount::numeric)::float AS total,
+               COUNT(*)::int AS count
+        FROM transactions WHERE ${where}
+        GROUP BY merchant_canonical
+        ORDER BY ABS(SUM(amount::numeric)) DESC
+        LIMIT ${limit}`;
+      break;
+
+    case 'monthly_breakdown':
+      queryText = `
+        SELECT NULL::text AS merchant, NULL::text AS category,
+               TO_CHAR(DATE_TRUNC('month', date), 'YYYY-MM') AS month,
+               NULL::text AS id, NULL::date AS date, NULL::text AS memo,
+               SUM(amount::numeric)::float AS total,
+               COUNT(*)::int AS count
+        FROM transactions WHERE ${where}
+        GROUP BY DATE_TRUNC('month', date)
+        ORDER BY DATE_TRUNC('month', date)`;
+      break;
+
+    case 'list':
+      queryText = `
+        SELECT merchant_canonical AS merchant, category,
+               NULL::text AS month,
+               id, date::text AS date, memo,
+               amount::float AS total,
+               1 AS count
+        FROM transactions WHERE ${where}
+        ORDER BY date DESC, ABS(amount::numeric) DESC
+        LIMIT ${limit}`;
+      break;
 
     default:
-      return { error: `Unknown operation: ${input.operation}` };
+      queryText = `
+        SELECT NULL::text AS merchant, NULL::text AS category, NULL::text AS month,
+               NULL::text AS id, NULL::date AS date, NULL::text AS memo,
+               COALESCE(SUM(amount::numeric), 0)::float AS total,
+               COUNT(*)::int AS count
+        FROM transactions WHERE ${where}`;
   }
+
+  const { rows } = await pool.query(queryText, values);
+
+  if (
+    !rows ||
+    rows.length === 0 ||
+    (rows.length === 1 &&
+      rows[0].total === null &&
+      rows[0].count === 0 &&
+      p.aggregate !== 'count')
+  ) {
+    return {
+      found: false,
+      message: 'No transactions found matching those criteria.',
+      currency: 'INR',
+      sourceDataset,
+      dateRange: { from: p.dateFrom ?? null, to: p.dateTo ?? null },
+      data: [],
+    };
+  }
+
+  if (
+    rows.length === 1 &&
+    (rows[0].total === null || rows[0].total === 0) &&
+    rows[0].count === 0 &&
+    p.aggregate !== 'count'
+  ) {
+    return {
+      found: false,
+      message: 'No transactions found matching those criteria.',
+      currency: 'INR',
+      sourceDataset,
+      dateRange: { from: p.dateFrom ?? null, to: p.dateTo ?? null },
+      data: [],
+    };
+  }
+
+  return {
+    found: true,
+    currency: 'INR',
+    sourceDataset,
+    dateRange: { from: p.dateFrom ?? null, to: p.dateTo ?? null },
+    data: rows.map((r) => ({
+      merchant: r.merchant as string | undefined,
+      category: r.category as string | undefined,
+      month: r.month as string | undefined,
+      id: r.id as string | undefined,
+      date: r.date as string | undefined,
+      memo: r.memo as string | null | undefined,
+      total: Math.round((Number(r.total) || 0) * 100) / 100,
+      count: Number(r.count) || 0,
+    })),
+  };
 }

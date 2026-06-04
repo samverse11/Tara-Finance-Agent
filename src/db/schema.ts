@@ -1,105 +1,101 @@
 import {
   pgTable,
-  serial,
   text,
   numeric,
+  date,
+  boolean,
+  serial,
+  uuid,
+  jsonb,
   timestamp,
   integer,
-  jsonb,
+  primaryKey,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
-// ─────────────────────────────────────────────────────────────
-// 1. TRANSACTIONS
-// ─────────────────────────────────────────────────────────────
 export const transactions = pgTable(
   'transactions',
   {
-    id:                 serial('id').primaryKey(),
-    date:               timestamp('date', { withTimezone: true }).notNull(),
-    amount:             numeric('amount', { precision: 12, scale: 2 }).notNull(),
-    merchant:           text('merchant').notNull(),          // raw merchant name
-    merchant_canonical: text('merchant_canonical').notNull(), // normalised (e.g. SWIGGY)
-    category:           text('category').notNull(),
-    description:        text('description'),
-    source_file:        text('source_file'),                 // which sample_* it came from
+    id: text('id').notNull(),
+    sourceDataset: text('source_dataset').notNull(),
+    date: date('date').notNull(),
+    merchant: text('merchant').notNull(),
+    merchantCanonical: text('merchant_canonical').notNull(),
+    category: text('category').notNull().default('uncategorized'),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    currency: text('currency').notNull().default('INR'),
+    memo: text('memo'),
+    isTransfer: boolean('is_transfer').notNull().default(false),
+    isRefund: boolean('is_refund').notNull().default(false),
   },
-  (t) => [
-    index('idx_tx_date').on(t.date),
-    index('idx_tx_merchant_canonical').on(t.merchant_canonical),
-    index('idx_tx_category').on(t.category),
-  ]
+  (t) => ({
+    pk: primaryKey({ columns: [t.id, t.sourceDataset] }),
+    dateIdx: index('idx_tx_date').on(t.date),
+    canonicalIdx: index('idx_tx_merchant_canonical').on(t.merchantCanonical),
+    categoryIdx: index('idx_tx_category').on(t.category),
+    sourceIdx: index('idx_tx_source_dataset').on(t.sourceDataset),
+    sourceDateIdx: index('idx_tx_source_date').on(t.sourceDataset, t.date),
+    transferIdx: index('idx_tx_not_transfer').on(t.isTransfer),
+  })
 );
 
-// ─────────────────────────────────────────────────────────────
-// 2. FUNDS (static metadata per fund)
-// ─────────────────────────────────────────────────────────────
 export const funds = pgTable('funds', {
-  id:       serial('id').primaryKey(),
-  fund_id:  text('fund_id').notNull().unique(), // stable identifier from JSON
-  name:     text('name').notNull(),
-  type:     text('type'),                       // equity / debt / hybrid …
-  category: text('category'),
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  category: text('category').notNull(),
 });
 
-// ─────────────────────────────────────────────────────────────
-// 3. FUND NAV (one row per fund per date)
-// ─────────────────────────────────────────────────────────────
-export const fund_nav = pgTable(
+export const fundNav = pgTable(
   'fund_nav',
   {
-    id:      serial('id').primaryKey(),
-    fund_id: text('fund_id')
+    fundId: text('fund_id')
       .notNull()
-      .references(() => funds.fund_id, { onDelete: 'cascade' }),
-    date:    timestamp('date', { withTimezone: true }).notNull(),
-    nav:     numeric('nav', { precision: 14, scale: 4 }).notNull(),
+      .references(() => funds.id),
+    navDate: date('nav_date').notNull(),
+    sourceDataset: text('source_dataset').notNull(),
+    navValue: numeric('nav_value', { precision: 12, scale: 4 }).notNull(),
   },
-  (t) => [
-    index('idx_nav_fund_date').on(t.fund_id, t.date),
-    uniqueIndex('uq_nav_fund_date').on(t.fund_id, t.date),
-  ]
+  (t) => ({
+    pk: primaryKey({ columns: [t.fundId, t.navDate, t.sourceDataset] }),
+    fundDateIdx: index('idx_nav_fund_date').on(t.fundId, t.navDate),
+    sourceIdx: index('idx_nav_source_dataset').on(t.sourceDataset),
+  })
 );
 
-// ─────────────────────────────────────────────────────────────
-// 4. HOLDINGS (user's current positions)
-// ─────────────────────────────────────────────────────────────
-export const holdings = pgTable('holdings', {
-  id:             serial('id').primaryKey(), // DB-generated, NOT from JSON
-  fund_id:        text('fund_id')
-    .notNull()
-    .references(() => funds.fund_id, { onDelete: 'cascade' }),
-  units:          numeric('units', { precision: 14, scale: 4 }).notNull(),
-  purchase_nav:   numeric('purchase_nav', { precision: 14, scale: 4 }).notNull(),
-  purchase_date:  timestamp('purchase_date', { withTimezone: true }),
-  source_file:    text('source_file'),
-});
+export const holdings = pgTable(
+  'holdings',
+  {
+    id: serial('id').primaryKey(),
+    sourceDataset: text('source_dataset').notNull(),
+    fundId: text('fund_id')
+      .notNull()
+      .references(() => funds.id),
+    fundName: text('fund_name').notNull(),
+    units: numeric('units', { precision: 14, scale: 4 }).notNull(),
+    purchaseDate: date('purchase_date').notNull(),
+    purchaseNav: numeric('purchase_nav', { precision: 12, scale: 4 }).notNull(),
+  },
+  (t) => ({
+    sourceFundUq: uniqueIndex('uq_holdings_source_fund').on(
+      t.sourceDataset,
+      t.fundId
+    ),
+    fundIdx: index('idx_holdings_fund_id').on(t.fundId),
+    sourceIdx: index('idx_holdings_source_dataset').on(t.sourceDataset),
+  })
+);
 
-// ─────────────────────────────────────────────────────────────
-// 5. REQUEST LOGS (observability)
-// ─────────────────────────────────────────────────────────────
-export const request_logs = pgTable('request_logs', {
-  id:           serial('id').primaryKey(),
-  created_at:   timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  question:     text('question').notNull(),
-  tools_called: jsonb('tools_called'),   // array of tool names used
-  status:       text('status').notNull().default('ok'), // ok | error
-  latency_ms:   integer('latency_ms'),
-  answer:       text('answer'),
-  error:        text('error'),
+export const requestLogs = pgTable('request_logs', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  question: text('question').notNull(),
+  toolsCalled: jsonb('tools_called'),
+  answer: text('answer'),
+  status: text('status').notNull(),
+  errorMessage: text('error_message'),
+  totalLatencyMs: integer('total_latency_ms'),
+  createdAt: timestamp('created_at').defaultNow(),
 });
-
-// ─────────────────────────────────────────────────────────────
-// Type exports
-// ─────────────────────────────────────────────────────────────
-export type Transaction    = typeof transactions.$inferSelect;
-export type NewTransaction = typeof transactions.$inferInsert;
-export type Fund           = typeof funds.$inferSelect;
-export type NewFund        = typeof funds.$inferInsert;
-export type FundNav        = typeof fund_nav.$inferSelect;
-export type NewFundNav     = typeof fund_nav.$inferInsert;
-export type Holding        = typeof holdings.$inferSelect;
-export type NewHolding     = typeof holdings.$inferInsert;
-export type RequestLog     = typeof request_logs.$inferSelect;
-export type NewRequestLog  = typeof request_logs.$inferInsert;

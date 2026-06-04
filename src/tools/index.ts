@@ -1,10 +1,10 @@
-export { queryTransactionsTool } from './query-transactions';
-export { queryPortfolioTool } from './query-portfolio';
-export { detectRecurringTool } from './detect-recurring';
+export { queryTransactionsTool } from './queryTransactions';
+export { queryPortfolioTool } from './queryPortfolio';
+export { detectRecurringTool } from './detectRecurring';
 
-import { queryTransactionsTool } from './query-transactions';
-import { queryPortfolioTool } from './query-portfolio';
-import { detectRecurringTool } from './detect-recurring';
+import { queryTransactionsTool } from './queryTransactions';
+import { queryPortfolioTool } from './queryPortfolio';
+import { detectRecurringTool } from './detectRecurring';
 
 export const taraTools = {
   query_transactions: queryTransactionsTool,
