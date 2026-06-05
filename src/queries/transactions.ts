@@ -68,6 +68,8 @@ export async function queryTransactions(
   }
   if (excludeTransfers) {
     conditions.push('is_transfer = FALSE');
+  } else {
+    conditions.push('is_transfer = TRUE');
   }
 
   const where = conditions.join(' AND ');

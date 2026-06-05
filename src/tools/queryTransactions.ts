@@ -12,7 +12,7 @@ export const queryTransactionsTool = createTool({
 - Refund-adjusted (net) spending — SUM includes negative refunds
 - Biggest expense: use aggregate=list with limit=1 (positive amounts sort first by amount)
 - Comparing categories: call once per category
-Default: excludes transfers (is_transfer). Never calculate totals yourself.`,
+Default: excludes transfers (is_transfer). For transfer totals, set exclude_transfers=false. Never calculate totals yourself.`,
 
   inputSchema: z.object({
     date_from: z
@@ -34,7 +34,9 @@ Default: excludes transfers (is_transfer). Never calculate totals yourself.`,
     exclude_transfers: z
       .boolean()
       .optional()
-      .describe('Default true. False only if user asks about transfers.'),
+      .describe(
+        'Default true for spending. Set false when the user asks how much they transferred.'
+      ),
     source_dataset: z
       .string()
       .optional()
@@ -46,6 +48,8 @@ Default: excludes transfers (is_transfer). Never calculate totals yourself.`,
       ),
     limit: z.number().optional().describe('For top_merchants and list. Default 10.'),
   }),
+
+  strict: false,
 
   execute: async (input) => {
     const dateFrom = resolveDate(input.date_from ?? null);

@@ -23,6 +23,8 @@ Use when the user asks about subscriptions, recurring payments, or regular bills
       .describe('sample_a | sample_b | sample_c. Defaults to ACTIVE_DATASET env.'),
   }),
 
+  strict: false,
+
   execute: async (input) =>
     detectRecurring(
       input.min_months ?? 3,

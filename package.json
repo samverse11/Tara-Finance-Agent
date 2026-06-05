@@ -27,6 +27,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.81",
     "@ai-sdk/google": "^3.0.80",
+    "@ai-sdk/groq": "^3.0.39",
     "@mastra/core": "^1.41.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",

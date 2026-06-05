@@ -35,6 +35,8 @@ Use realised_return for "my return". Use period_return for "the fund's return".`
       .describe('sample_a | sample_b | sample_c. Defaults to ACTIVE_DATASET env.'),
   }),
 
+  strict: false,
+
   execute: async (input) => {
     const dateFrom = resolveDate(input.date_from ?? null);
     const dateTo = resolveDateTo(input.date_to ?? null, dateFrom);

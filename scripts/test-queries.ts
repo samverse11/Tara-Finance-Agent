@@ -70,7 +70,7 @@ async function testTransfersExcluded(): Promise<void> {
     excludeTransfers: true,
   });
 
-  const incl = await queryTransactions({
+  const xferOnly = await queryTransactions({
     aggregate: 'sum',
     sourceDataset: DS,
     dateFrom: YEAR_FROM,
@@ -81,8 +81,10 @@ async function testTransfersExcluded(): Promise<void> {
   const expectedExcl = Number(ground.non_transfer_sum);
   const expectedIncl =
     Number(ground.non_transfer_sum) + Number(ground.transfer_sum);
+  const expectedXferOnly = Number(ground.transfer_sum);
   const actualExcl = excl.data[0]?.total ?? 0;
-  const actualIncl = incl.data[0]?.total ?? 0;
+  const actualXferOnly = xferOnly.data[0]?.total ?? 0;
+  const combinedExclAndXfer = actualExcl + actualXferOnly;
   const transferCount = Number(ground.transfer_count);
 
   assert(
@@ -92,15 +94,16 @@ async function testTransfersExcluded(): Promise<void> {
   );
 
   assert(
-    '1b. Including transfers raises total when transfers exist',
-    transferCount > 0 && actualIncl > actualExcl,
-    `excluded=${actualExcl.toFixed(2)} included=${actualIncl.toFixed(2)} transfer_sum=${Number(ground.transfer_sum).toFixed(2)}`
+    '1b. Spending plus transfers equals all transactions',
+    transferCount > 0 &&
+      approxEqual(combinedExclAndXfer, expectedIncl, 1),
+    `spending=${actualExcl.toFixed(2)} transfers=${actualXferOnly.toFixed(2)} all=${expectedIncl.toFixed(2)}`
   );
 
   assert(
-    '1c. Include-transfers mode matches SQL all-tx sum',
-    approxEqual(actualIncl, expectedIncl, 1),
-    `query=${actualIncl.toFixed(2)} expected=${expectedIncl.toFixed(2)}`
+    '1c. excludeTransfers=false scopes to transfers only',
+    xferOnly.found && approxEqual(actualXferOnly, expectedXferOnly, 1),
+    `query=${actualXferOnly.toFixed(2)} expected=${expectedXferOnly.toFixed(2)}`
   );
 }
 

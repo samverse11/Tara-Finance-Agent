@@ -8,10 +8,10 @@ export const MODEL_PROVIDER: ModelProvider =
   (process.env.MODEL_PROVIDER as ModelProvider) ?? 'gemini';
 
 const DEFAULT_MODELS: Record<ModelProvider, string> = {
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-2.5-flash',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-20241022',
-  groq: 'llama-3.3-70b-versatile',
+  groq: 'llama3-groq-70b-8192-tool-use-preview',
 };
 
 export const MODEL_NAME: string =

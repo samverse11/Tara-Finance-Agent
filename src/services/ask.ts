@@ -23,6 +23,27 @@ function extractToolNames(
   return [...names];
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateWithRetry(question: string, maxAttempts = 3) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await taraAgent.generate(question, { maxSteps: 8 });
+    } catch (err) {
+      lastError = err;
+      const message = err instanceof Error ? err.message : String(err);
+      const shouldRetry =
+        message.includes('Failed to call a function') && attempt < maxAttempts - 1;
+      if (!shouldRetry) throw err;
+      await sleep(500);
+    }
+  }
+  throw lastError;
+}
+
 export async function askQuestion(question: string): Promise<AskResult> {
   const started = Date.now();
   let tools_called: string[] = [];
@@ -31,9 +52,20 @@ export async function askQuestion(question: string): Promise<AskResult> {
   let error: string | undefined;
 
   try {
-    const result = await taraAgent.generate(question, {
-      maxSteps: 8,
-    });
+    const result = await generateWithRetry(question);
+
+    if (
+      result.steps &&
+      result.steps.every((step) => (step.toolCalls ?? []).length === 0)
+    ) {
+      return {
+        answer:
+          "I don't have enough information to answer that. Please try rephrasing or ask about your transactions, spending, or portfolio.",
+        tools_called: [],
+        latency_ms: Date.now() - started,
+        status: 'ok',
+      };
+    }
 
     answer = result.text ?? '';
     tools_called = extractToolNames(result.steps ?? []);
