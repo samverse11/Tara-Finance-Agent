@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { queryPortfolio } from '../queries/portfolio';
-import { resolveDate } from '../lib/dates';
+import { resolveDate, resolveDateTo } from '../lib/dates';
 
 export const queryPortfolioTool = createTool({
   id: 'query_portfolio',
@@ -35,13 +35,17 @@ Use realised_return for "my return". Use period_return for "the fund's return".`
       .describe('sample_a | sample_b | sample_c. Defaults to ACTIVE_DATASET env.'),
   }),
 
-  execute: async (input) =>
-    queryPortfolio({
+  execute: async (input) => {
+    const dateFrom = resolveDate(input.date_from ?? null);
+    const dateTo = resolveDateTo(input.date_to ?? null, dateFrom);
+
+    return queryPortfolio({
       queryType: input.query_type,
       fundId: input.fund_id ?? null,
       fundNameSearch: input.fund_name_search ?? null,
-      dateFrom: resolveDate(input.date_from ?? null),
-      dateTo: resolveDate(input.date_to ?? null),
+      dateFrom,
+      dateTo,
       sourceDataset: input.source_dataset ?? null,
-    }),
+    });
+  },
 });

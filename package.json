@@ -18,6 +18,7 @@
     "ingest:all": "tsx scripts/ingest.ts --all",
     "verify": "tsx scripts/verify-ingest.ts",
     "test:queries": "tsx scripts/test-queries.ts",
+    "test:tools": "tsx scripts/test-tools.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

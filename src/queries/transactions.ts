@@ -133,7 +133,7 @@ export async function queryTransactions(
                amount::float AS total,
                1 AS count
         FROM transactions WHERE ${where}
-        ORDER BY date DESC, ABS(amount::numeric) DESC
+        ORDER BY ABS(amount::numeric) DESC
         LIMIT ${limit}`;
       break;
 

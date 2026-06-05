@@ -41,9 +41,11 @@ export function resolveDate(input: string | undefined | null): string | null {
 
 /** First day of month after `isoMonthStart` (exclusive upper bound for date_to). */
 export function monthEnd(isoMonthStart: string): string {
-  const d = new Date(isoMonthStart);
-  const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-  return toISO(end);
+  const [yearStr, monthStr] = isoMonthStart.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  if (month === 12) return `${year + 1}-01-01`;
+  return `${year}-${String(month + 1).padStart(2, '0')}-01`;
 }
 
 /** Resolve date_to: if only a month was given, use exclusive end of that month. */
