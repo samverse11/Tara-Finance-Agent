@@ -1,8 +1,14 @@
 # Tara Finance Agent (Provue take-home)
 
-## Phase 1–2 setup
+AI finance agent that answers personal finance questions using PostgreSQL data and three Mastra tools — no LLM arithmetic.
 
-1. Copy `.env.example` → `.env` and set `DATABASE_URL`.
+## Stack
+
+TypeScript · Mastra · Express · PostgreSQL · Drizzle ORM · Anthropic (via AI SDK)
+
+## Quick start
+
+1. Copy `.env.example` → `.env` and set `DATABASE_URL` + `ANTHROPIC_API_KEY`.
 2. Create DB and push schema:
 
 ```bash
@@ -32,6 +38,18 @@ Expected per dataset:
 ✓ sample_a: 1500 transactions, 8 funds, 192 NAV, 8 holdings
 ```
 
+5. Run the API:
+
+```bash
+npm run dev
+```
+
+```bash
+curl -X POST http://localhost:3000/ask \
+  -H "Content-Type: application/json" \
+  -d "{\"question\": \"How much did I spend at Swiggy?\"}"
+```
+
 ## Phase 3 — Query layer + tools
 
 | Module | Purpose |
@@ -49,4 +67,17 @@ ACTIVE_DATASET=sample_a npm run test:queries
 # Exits non-zero if any check fails
 ```
 
-Phase 4 (`POST /ask` + agent) is next.
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Express server with `POST /ask` |
+| `npm run ingest` | Ingest one dataset (pass `sample_a` or set `DATA_DIR`) |
+| `npm run ingest:all` | Ingest all `data/sample_*` directories |
+| `npm run verify` | Run deterministic ingest checks |
+| `npm run test:queries` | Audit query layer against expected results |
+| `npm run db:push` | Apply Drizzle schema |
+| `npm run db:indexes` | Create performance indexes |
+| `npm run typecheck` | TypeScript check |
+
+See [DESIGN.md](./DESIGN.md) for architecture and business rules.
