@@ -29,6 +29,7 @@
     "@ai-sdk/google": "^3.0.80",
     "@ai-sdk/groq": "^3.0.39",
     "@mastra/core": "^1.41.0",
+    "ai": "^6.0.197",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",

@@ -23,22 +23,52 @@ function extractToolNames(
   return [...names];
 }
 
+/** Parse "Please retry in 22.5s" or "Please retry in 1m30s" from a rate-limit message */
+function parseRetryDelay(message: string): number {
+  // "Please retry in 22.5s"
+  const secMatch = message.match(/Please retry in (\d+(?:\.\d+)?)s/);
+  if (secMatch) return Math.ceil(parseFloat(secMatch[1])) * 1000 + 500;
+  // "Please retry in 1m30.5s"
+  const minMatch = message.match(/Please retry in (\d+)m(\d+(?:\.\d+)?)s/);
+  if (minMatch) return (parseInt(minMatch[1]) * 60 + parseFloat(minMatch[2])) * 1000 + 500;
+  return 25_000; // fallback: 25 s
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Build the prompt sent to the LLM — always includes today's date so the model never guesses */
+function buildPrompt(question: string): string {
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  return `[Today is ${today}]\n\n${question}`;
+}
+
 async function generateWithRetry(question: string, maxAttempts = 3) {
+  const prompt = buildPrompt(question);
   let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      return await taraAgent.generate(question, { maxSteps: 8 });
+      return await taraAgent.generate(prompt, { maxSteps: 8 });
     } catch (err) {
       lastError = err;
       const message = err instanceof Error ? err.message : String(err);
-      const shouldRetry =
-        message.includes('Failed to call a function') && attempt < maxAttempts - 1;
-      if (!shouldRetry) throw err;
-      await sleep(500);
+
+      const isRateLimit =
+        message.includes('Rate limit reached') ||
+        message.includes('rate_limit_exceeded') ||
+        message.includes('Please retry in') ||
+        (err as { statusCode?: number }).statusCode === 429;
+
+      const isToolCallError = message.includes('Failed to call a function');
+
+      if ((isRateLimit || isToolCallError) && attempt < maxAttempts - 1) {
+        const delay = isRateLimit ? parseRetryDelay(message) : 500;
+        console.log(`[retry ${attempt + 1}] waiting ${delay}ms — ${message.slice(0, 80)}`);
+        await sleep(delay);
+        continue;
+      }
+      throw err;
     }
   }
   throw lastError;

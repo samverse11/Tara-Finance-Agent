@@ -3,16 +3,31 @@ import { z } from 'zod';
 import { queryTransactions } from '../queries/transactions';
 import { resolveDate, resolveDateTo } from '../lib/dates';
 
+/** Normalise LLM output: accept a bare string OR a proper array */
+function toStringArray(v: string | string[] | undefined | null): string[] | null {
+  if (!v) return null;
+  if (Array.isArray(v)) return v;
+  return [v]; // small model passed a plain string — wrap it
+}
+
+/** Normalise aggregate: small LLMs sometimes pass wrong case e.g. top_mERCHANTS */
+type Aggregate = 'sum' | 'average' | 'count' | 'top_merchants' | 'monthly_breakdown' | 'list';
+function normaliseAggregate(v: string): Aggregate {
+  const lower = v.toLowerCase() as Aggregate;
+  const valid: Aggregate[] = ['sum', 'average', 'count', 'top_merchants', 'monthly_breakdown', 'list'];
+  return valid.includes(lower) ? lower : 'sum';
+}
+
 export const queryTransactionsTool = createTool({
   id: 'query_transactions',
   description: `Query the user's spending transactions. Use for:
 - How much was spent (total, by category, by merchant, by date range)
-- Top merchants or categories
-- Month-by-month spending breakdown
-- Refund-adjusted (net) spending — SUM includes negative refunds
-- Biggest expense: use aggregate=list with limit=1 (positive amounts sort first by amount)
+- Top merchants: aggregate=top_merchants (must be lowercase exactly)
+- Month-by-month spending breakdown: aggregate=monthly_breakdown
+- Refund amounts: set refunds_only=true, aggregate=sum (REQUIRED for refund questions)
+- Biggest expense: aggregate=list with limit=1
 - Comparing categories: call once per category
-Default: excludes transfers (is_transfer). For transfer totals, set exclude_transfers=false. Never calculate totals yourself.`,
+Default: excludes transfers. Never calculate totals yourself.`,
 
   inputSchema: z.object({
     date_from: z
@@ -24,9 +39,9 @@ Default: excludes transfers (is_transfer). For transfer totals, set exclude_tran
       .optional()
       .describe('End date ISO (exclusive). Use first day of next month for full months.'),
     categories: z
-      .array(z.string())
+      .union([z.array(z.string()), z.string()])
       .optional()
-      .describe('e.g. ["food","groceries"]. Omit for all.'),
+      .describe('ALWAYS an array e.g. ["food","groceries"]. Never a bare string. Omit for all.'),
     merchant_search: z
       .string()
       .optional()
@@ -34,17 +49,19 @@ Default: excludes transfers (is_transfer). For transfer totals, set exclude_tran
     exclude_transfers: z
       .boolean()
       .optional()
-      .describe(
-        'Default true for spending. Set false when the user asks how much they transferred.'
-      ),
+      .describe('Default true. False only if user asks about transfers.'),
+      refunds_only: z
+      .boolean()
+      .optional()
+      .describe('Set true ONLY for refund questions ("how much in refunds?", "what were my refunds?"). Refunds are negative amounts. aggregate=sum will give the total refund amount.'),
     source_dataset: z
       .string()
       .optional()
       .describe('sample_a | sample_b | sample_c. Defaults to ACTIVE_DATASET env.'),
     aggregate: z
-      .enum(['sum', 'average', 'count', 'top_merchants', 'monthly_breakdown', 'list'])
+      .string()
       .describe(
-        'sum=total, top_merchants=ranked, monthly_breakdown=per month, list=individual rows'
+        'MUST be exactly one of (lowercase): sum | average | count | top_merchants | monthly_breakdown | list'
       ),
     limit: z.number().optional().describe('For top_merchants and list. Default 10.'),
   }),
@@ -55,14 +72,20 @@ Default: excludes transfers (is_transfer). For transfer totals, set exclude_tran
     const dateFrom = resolveDate(input.date_from ?? null);
     const dateTo = resolveDateTo(input.date_to ?? null, dateFrom);
 
+    // Normalise categories: small LLMs sometimes pass a bare string instead of array
+    const categories = toStringArray(
+      input.categories as string | string[] | undefined | null
+    );
+
     return queryTransactions({
       dateFrom,
       dateTo,
-      categories: input.categories ?? null,
+      categories,
       merchantSearch: input.merchant_search ?? null,
       excludeTransfers: input.exclude_transfers ?? true,
+      refundsOnly: input.refunds_only ?? false,
       sourceDataset: input.source_dataset ?? null,
-      aggregate: input.aggregate,
+      aggregate: normaliseAggregate(input.aggregate as string),
       limit: input.limit ?? 10,
     });
   },

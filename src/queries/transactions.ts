@@ -8,6 +8,7 @@ export interface TransactionQueryParams {
   merchantSearch?: string | null;
   excludeTransfers?: boolean;
   sourceDataset?: string | null;
+  refundsOnly?: boolean;
   aggregate:
     | 'sum'
     | 'average'
@@ -66,7 +67,9 @@ export async function queryTransactions(
     conditions.push(`merchant_canonical ILIKE $${idx++}`);
     values.push(term);
   }
-  if (excludeTransfers) {
+  if (p.refundsOnly) {
+    conditions.push('is_refund = TRUE');
+  } else if (excludeTransfers) {
     conditions.push('is_transfer = FALSE');
   } else {
     conditions.push('is_transfer = TRUE');

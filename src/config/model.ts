@@ -18,6 +18,12 @@ export const MODEL_NAME: string =
   process.env.MODEL_NAME ?? DEFAULT_MODELS[MODEL_PROVIDER];
 
 export async function createModel() {
+  console.log('MODEL_PROVIDER=', MODEL_PROVIDER);
+  console.log('MODEL_NAME=', MODEL_NAME);
+  console.log(
+  'KEY PREFIX=',
+  process.env.GEMINI_API_KEY?.substring(0, 8)
+);
   switch (MODEL_PROVIDER) {
     case 'gemini': {
       const google = createGoogleGenerativeAI({
