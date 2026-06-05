@@ -139,9 +139,15 @@ export async function queryPortfolio(p: PortfolioQueryParams) {
           'Period return = (end NAV - start NAV) / start NAV × 100 (fund-level, not user gain)',
         periodReturns: valid,
       };
+      console.log('DEBUG period_return dates:', { dateFrom, dateTo, fundName: p.fundNameSearch });
     }
 
     case 'realised_return': {
+      console.log('DEBUG realised_return params:', {
+        fundId: p.fundId,
+        fundNameSearch: p.fundNameSearch,
+        sourceDataset,
+      });
       let holdingQuery = sql`
         SELECT h.id, h.fund_id, h.fund_name, h.units::float, h.purchase_date::text,
                h.purchase_nav::float

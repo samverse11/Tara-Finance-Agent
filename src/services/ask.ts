@@ -23,33 +23,53 @@ function extractToolNames(
   return [...names];
 }
 
-/** Parse "Please retry in 22.5s" or "Please retry in 1m30s" from a rate-limit message */
 function parseRetryDelay(message: string): number {
-  // "Please retry in 22.5s"
   const secMatch = message.match(/Please retry in (\d+(?:\.\d+)?)s/);
   if (secMatch) return Math.ceil(parseFloat(secMatch[1])) * 1000 + 500;
-  // "Please retry in 1m30.5s"
   const minMatch = message.match(/Please retry in (\d+)m(\d+(?:\.\d+)?)s/);
   if (minMatch) return (parseInt(minMatch[1]) * 60 + parseFloat(minMatch[2])) * 1000 + 500;
-  return 25_000; // fallback: 25 s
+  return 25_000;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Build the prompt sent to the LLM — always includes today's date so the model never guesses */
 function buildPrompt(question: string): string {
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const today = new Date().toISOString().split('T')[0];
   return `[Today is ${today}]\n\n${question}`;
 }
 
 async function generateWithRetry(question: string, maxAttempts = 3) {
   const prompt = buildPrompt(question);
   let lastError: unknown;
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      return await taraAgent.generate(prompt, { maxSteps: 8 });
+      const result = await taraAgent.generate(prompt, { maxSteps: 8 });
+
+      const calledTools = extractToolNames(result.steps ?? []);
+      const isFinanceQuestion =
+        /spend|cost|paid|transfer|portfolio|fund|return|merchant|subscription|refund|expense|bought|payment/i.test(
+          question
+        );
+
+      if (calledTools.length === 0 && isFinanceQuestion && attempt < maxAttempts - 1) {
+        console.log(`[retry ${attempt + 1}] no tools called for finance question — retrying`);
+        await sleep(1000);
+        continue;
+      }
+
+      const text = result.text ?? '';
+      const looksEmpty =
+        /no data available|tool could not find|no matching|unfortunately.*not found/i.test(text);
+      if (looksEmpty && calledTools.length > 0 && attempt < maxAttempts - 1) {
+        console.log(`[retry ${attempt + 1}] suspicious empty result — retrying`);
+        await sleep(1000);
+        continue;
+      }
+
+      return result;
     } catch (err) {
       lastError = err;
       const message = err instanceof Error ? err.message : String(err);
@@ -63,7 +83,7 @@ async function generateWithRetry(question: string, maxAttempts = 3) {
       const isToolCallError = message.includes('Failed to call a function');
 
       if ((isRateLimit || isToolCallError) && attempt < maxAttempts - 1) {
-        const delay = isRateLimit ? parseRetryDelay(message) : 500;
+        const delay = isRateLimit ? parseRetryDelay(message) : 1000;
         console.log(`[retry ${attempt + 1}] waiting ${delay}ms — ${message.slice(0, 80)}`);
         await sleep(delay);
         continue;
@@ -83,19 +103,6 @@ export async function askQuestion(question: string): Promise<AskResult> {
 
   try {
     const result = await generateWithRetry(question);
-
-    if (
-      result.steps &&
-      result.steps.every((step) => (step.toolCalls ?? []).length === 0)
-    ) {
-      return {
-        answer:
-          "I don't have enough information to answer that. Please try rephrasing or ask about your transactions, spending, or portfolio.",
-        tools_called: [],
-        latency_ms: Date.now() - started,
-        status: 'ok',
-      };
-    }
 
     answer = result.text ?? '';
     tools_called = extractToolNames(result.steps ?? []);

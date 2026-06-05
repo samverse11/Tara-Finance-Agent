@@ -3,6 +3,8 @@
 export function resolveDate(input: string | undefined | null): string | null {
   if (!input) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+  // Add this right after the full ISO date check:
+  if (/^\d{4}-\d{2}$/.test(input)) return input + '-01';
 
   const now = new Date();
   const lower = input.toLowerCase().trim();
@@ -26,7 +28,17 @@ export function resolveDate(input: string | undefined | null): string | null {
       return `${year}-${String(i + 1).padStart(2, '0')}-01`;
     }
   }
-
+  // After the full months loop, add this:
+  const shortMonths = ['jan', 'feb', 'mar', 'apr', 'may', 'jun',
+    'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  for (let i = 0; i < shortMonths.length; i++) {
+    if (lower.startsWith(shortMonths[i]) && !lower.startsWith(shortMonths[i] + 'uary')
+      && !lower.startsWith(shortMonths[i] + 'ruary')) {
+      const yearMatch = lower.match(/\d{4}/);
+      const year = yearMatch ? parseInt(yearMatch[0], 10) : now.getFullYear();
+      return `${year}-${String(i + 1).padStart(2, '0')}-01`;
+    }
+  }
   // Q1 2025, Q2 2024, etc.
   const qMatch = lower.match(/q([1-4])\s*(\d{4})?/);
   if (qMatch) {
