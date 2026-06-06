@@ -10,6 +10,14 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "scripts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src",
+    "scripts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "scripts/test-tools.ts",
+    "scripts/test-queries.ts"
+  ]
 }
