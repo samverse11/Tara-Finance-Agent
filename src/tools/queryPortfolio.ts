@@ -6,11 +6,14 @@ import { resolveDate, resolveDateTo } from '../lib/dates';
 export const queryPortfolioTool = createTool({
   id: 'query_portfolio',
   description: `Query fund and investment data. Use for:
-- "what is my return / overall investment return / how much have I gained" → query_type=realised_return (user's actual gain vs purchase cost)
-- "what is my portfolio worth / total value" → query_type=portfolio_summary (includes totalGain and totalGainPct)
-- "how did fund X perform / period return" → query_type=period_return (fund NAV % change, NOT user-specific)
-- "list all funds / latest NAV" → query_type=fund_list
-IMPORTANT: For overall portfolio return (%), always use portfolio_summary — it returns totalGainPct directly.`,
+- "what is my return / overall investment return / how much have I gained" → query_type=portfolio_summary (includes totalGain ₹ and totalGainPct %)
+- "what is my portfolio worth / total value" → query_type=portfolio_summary
+- "period return / how did fund X perform / NAV return" → query_type=period_return (NAV-based, NOT user-specific)
+  - Always use fund_name_search for natural-language fund names (e.g. "Saffron" or "Bluechip")
+  - date_from and date_to are optional: if omitted, the full NAV history range is used automatically
+- "realised return on my holding / what did I make on fund X" → query_type=realised_return (holdings-based)
+- "list all funds" → query_type=fund_list
+IMPORTANT: NEVER use fund_id with a guessed value. Use fund_name_search instead for any natural-language fund name.`,
 
   inputSchema: z.object({
     query_type: z.enum([

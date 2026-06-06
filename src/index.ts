@@ -22,7 +22,18 @@ app.post('/ask', async (req, res) => {
   const result = await askQuestion(question);
 
   if (result.status === 'error') {
-    res.status(500).json(result);
+    const isRateLimit =
+      result.error?.includes('Rate limit reached') ||
+      result.error?.includes('rate_limit_exceeded') ||
+      result.error?.includes('Please retry in');
+    const httpStatus = isRateLimit ? 429 : 500;
+    res.status(httpStatus).json({
+      error: isRateLimit
+        ? 'Rate limit reached — please wait a moment and try again.'
+        : result.error,
+      answer: result.answer,
+      tools_called: result.tools_called,
+    });
     return;
   }
 

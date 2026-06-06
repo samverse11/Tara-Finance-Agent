@@ -9,6 +9,8 @@
     "start": "tsx src/index.ts",
     "start:dev": "tsx src/index.ts",
     "build": "tsc",
+    "eval": "tsx scripts/eval-agent.ts",
+    "eval:fast": "DELAY_MS=2000 tsx scripts/eval-agent.ts",
     "db:push": "drizzle-kit push --force",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",

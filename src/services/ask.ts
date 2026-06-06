@@ -46,30 +46,7 @@ async function generateWithRetry(question: string, maxAttempts = 3) {
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const result = await taraAgent.generate(prompt, { maxSteps: 8 });
-
-      const calledTools = extractToolNames(result.steps ?? []);
-      const isFinanceQuestion =
-        /spend|cost|paid|transfer|portfolio|fund|return|merchant|subscription|refund|expense|bought|payment/i.test(
-          question
-        );
-
-      if (calledTools.length === 0 && isFinanceQuestion && attempt < maxAttempts - 1) {
-        console.log(`[retry ${attempt + 1}] no tools called for finance question — retrying`);
-        await sleep(1000);
-        continue;
-      }
-
-      const text = result.text ?? '';
-      const looksEmpty =
-        /no data available|tool could not find|no matching|unfortunately.*not found/i.test(text);
-      if (looksEmpty && calledTools.length > 0 && attempt < maxAttempts - 1) {
-        console.log(`[retry ${attempt + 1}] suspicious empty result — retrying`);
-        await sleep(1000);
-        continue;
-      }
-
-      return result;
+      return await taraAgent.generate(prompt, { maxSteps: 12 });
     } catch (err) {
       lastError = err;
       const message = err instanceof Error ? err.message : String(err);

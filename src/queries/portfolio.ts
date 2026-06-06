@@ -103,8 +103,15 @@ export async function queryPortfolio(p: PortfolioQueryParams) {
         return { found: false, message: 'No matching funds found.', sourceDataset };
       }
 
-      const dateTo = p.dateTo ?? new Date().toISOString().split('T')[0]!;
-      const dateFrom = p.dateFrom ?? dateTo;
+      const { rows: dateRows } = await db.execute(sql`
+        SELECT MIN(nav_date)::text AS first_date, MAX(nav_date)::text AS last_date
+        FROM fund_nav WHERE source_dataset = ${sourceDataset}
+      `);
+      const fullFrom = (dateRows[0] as { first_date: string }).first_date;
+      const fullTo = (dateRows[0] as { last_date: string }).last_date;
+
+      const dateTo = p.dateTo ?? fullTo ?? new Date().toISOString().split('T')[0]!;
+      const dateFrom = p.dateFrom ?? fullFrom ?? dateTo;
 
       const results = await Promise.all(
         fundRows.map(async (f) => {
@@ -139,15 +146,9 @@ export async function queryPortfolio(p: PortfolioQueryParams) {
           'Period return = (end NAV - start NAV) / start NAV × 100 (fund-level, not user gain)',
         periodReturns: valid,
       };
-      console.log('DEBUG period_return dates:', { dateFrom, dateTo, fundName: p.fundNameSearch });
     }
 
     case 'realised_return': {
-      console.log('DEBUG realised_return params:', {
-        fundId: p.fundId,
-        fundNameSearch: p.fundNameSearch,
-        sourceDataset,
-      });
       let holdingQuery = sql`
         SELECT h.id, h.fund_id, h.fund_name, h.units::float, h.purchase_date::text,
                h.purchase_nav::float
