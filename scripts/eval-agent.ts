@@ -177,7 +177,7 @@ const TESTS: TestCase[] = [
   {
     id: 11,
     category: 'PORTFOLIO',
-    question: 'What was the period return of Saffron Bluechip Equity Fund between Jan 2024 and Jan 2025?',
+    question: 'What was the period return of Saffron Bluechip Equity Fund from 2024-01-01 to 2025-01-01?',
     notes: 'NAV-based return. Must find NAV data (not claim it is missing).',
     checks: [
       { type: 'contains_amount', value: 31.17, tolerance: 0.1, description: 'Period return ~31.17%' },
